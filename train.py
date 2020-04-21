@@ -69,9 +69,9 @@ def ourmodel(arch, hidden_layer):
     if arch == 'vgg16':
         model = models.vgg16(pretrained=True)
 
-    if arch == 'resnet18':
-        model = models.resnet18(pretrained=True)
-    
+    if arch == 'densenet121':
+        model = models.densenet121(pretrained=True)
+    print(model)
     #classifier part
     model.classifier = nn.Sequential(OrderedDict([
                                 ('fc1', nn.Linear(model.classifier[0].in_features, hidden_layer)),
@@ -82,7 +82,12 @@ def ourmodel(arch, hidden_layer):
                                 ('drout2', nn.Dropout(p=0.5)),
                                 ('fc3', nn.Linear(1000, 102)),
                                 ('output', nn.LogSoftmax(dim=1))]))
+
+    for param in model.parameters():
+        param.requires_grad = False
+
     print(model)
+    return model
 
 
 
