@@ -21,6 +21,7 @@ def pass_args():
     args.add_argument('--arch', type=str, default='vgg16', help="specify the architecture")
     args.add_argument('--learn_rate', type=float, default=0.001, help="learning rate for the training model")
     args.add_argument('--epochs', type=int, default=5, help="epochs for training model")
+    args.add_argument('--hidden_layer', type=int, default=4096, help="choose the hidden layer no")
     ar = args.parse_args()
     return ar
 
@@ -64,13 +65,26 @@ validloaders = torch.utils.data.DataLoader(valid_datasets, batch_size=64, shuffl
 #===============================================================================
 #define the model classifier
 
-def ourmodel(arch):
+def ourmodel(arch, hidden_layer):
     if arch == 'vgg16':
         model = models.vgg16(pretrained=True)
 
     if arch == 'resnet18':
         model = models.resnet18(pretrained=True)
-    return model
+    
+    #classifier part
+    model.classifier = nn.Sequential(OrderedDict([
+                                ('fc1', nn.Linear(model.classifier[0].in_features, hidden_layer)),
+                                ('relu1',  nn.ReLU()),
+                                ('drout1', nn.Dropout(p=0.5)),
+                                ('fc2', nn.Linear(hidden_layer, 1000)),
+                                ('relu2', nn.ReLU()),
+                                ('drout2', nn.Dropout(p=0.5)),
+                                ('fc3', nn.Linear(1000, 102)),
+                                ('output', nn.LogSoftmax(dim=1))]))
+    print(model)
+
+
 
 
 
@@ -82,8 +96,8 @@ def ourmodel(arch):
 #main function
 def main():
     ar = pass_args()
-    model = ourmodel(ar.arch)
-    print(model.classifier[0].Linear.in_features)
+    model = ourmodel(ar.arch, ar.hidden_layer)
+
 
 
 #call the main function
