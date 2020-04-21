@@ -21,7 +21,8 @@ def pass_args():
     args.add_argument('--arch', type=str, default='vgg16', help="specify the architecture")
     args.add_argument('--learn_rate', type=float, default=0.001, help="learning rate for the training model")
     args.add_argument('--epochs', type=int, default=5, help="epochs for training model")
-    args.add_argument('--hidden_layer', type=int, default=4096, help="choose the hidden layer no")
+    args.add_argument('--hidden_units', type=int, default=4096, help="choose the hidden layer no")
+    args.add_argument('--save_dir', help="specify the directory to save the checkpoint")
     ar = args.parse_args()
     return ar
 
@@ -60,49 +61,127 @@ valid_datasets = datasets.ImageFolder(valid_dir, transform=valid_transform)
 # TODO: Using the image datasets and the trainforms, define the trainloaders
 validloaders = torch.utils.data.DataLoader(valid_datasets, batch_size=64, shuffle=False)
 
+#===============================================================================
+#check cuda is available otherwise use cuda
+
+def availableDevice():
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    return device
+
+
+
+
+
+
+
+
 
 
 #===============================================================================
 #define the model classifier
 
-def ourmodel(arch, hidden_layer):
+structure = {"vgg16":25088, "densenet121":1024}
+
+def ourmodel(arch, hidden_units):
     if arch == 'vgg16':
         model = models.vgg16(pretrained=True)
 
     if arch == 'densenet121':
         model = models.densenet121(pretrained=True)
-    print(model)
-    #classifier part
-    model.classifier = nn.Sequential(OrderedDict([
-                                ('fc1', nn.Linear(model.classifier[0].in_features, hidden_layer)),
-                                ('relu1',  nn.ReLU()),
-                                ('drout1', nn.Dropout(p=0.5)),
-                                ('fc2', nn.Linear(hidden_layer, 1000)),
-                                ('relu2', nn.ReLU()),
-                                ('drout2', nn.Dropout(p=0.5)),
-                                ('fc3', nn.Linear(1000, 102)),
-                                ('output', nn.LogSoftmax(dim=1))]))
-
     for param in model.parameters():
         param.requires_grad = False
 
-    print(model)
+#classifier part
+
+    model.classifier = nn.Sequential(OrderedDict([
+                                ('fc1', nn.Linear(structure[arch], 4096)),
+                                ('relu1',  nn.ReLU()),
+                                ('drout1', nn.Dropout(p=0.5)),
+                                ('fc2', nn.Linear(4096, 1000)),
+                                ('relu2', nn.ReLU()),
+                                ('drout2', nn.Dropout(p=0.5)),
+                                ('fc3', nn.Linear(1000, 102)),
+                                ('output', nn.LogSoftmax(dim=1))
+]))
     return model
-
-
-
-
-
 #train the model and check the accuracy on the valid dataset
 
-#save the checkpoint in the directory mentioned
 
+
+def trainModel(TrainLoader, Validloader, selectedModel, epochs, optimizer, learnRate, device):
+    steps =0
+    print_every = 5
+    running_loss = 0
+    criterion = nn.NLLLoss()
+    print(device)
+    for e in range(epochs):
+        steps += 1
+        for inputs, labels in TrainLoader:
+            steps += 1
+            inputs, labels = inputs.to(device), labels.to(device)
+            optimizer.zero_grad()
+            logps = selectedModel.forward(inputs)
+            loss = criterion(logps, labels)
+            loss.backward()
+            optimizer.step()
+            running_loss += loss.item()
+
+
+            if (steps % print_every == 0):
+                print(steps)
+                accuracy = 0
+                valid_loss = 0
+                selectedModel.eval()
+                with torch.no_grad():
+                    for inputs, labels in Validloader:
+                        inputs, labels = inputs.to(device), labels.to(device)
+                        logps = selectedModel.forward(inputs)
+                        batch_loss = criterion(logps, labels)
+
+                        valid_loss += batch_loss.item()
+
+                        ps = torch.exp(logps)
+                        top_p, top_class = ps.topk(1, dim=1)
+                        equals = top_class == labels.view(*top_class.shape)
+
+                        accuracy += torch.mean(equals.type(torch.FloatTensor)).item()
+                print("========================")
+                print("Epochs:{}/{}".format(e+1, epochs))
+                print("trainloss:", running_loss/len(trainloaders))
+                print("validloss:", valid_loss/len(validloaders))
+                print("Accuracy", accuracy/len(validloaders))
+                running_loss = 0
+                selectedModel.train()
+        print("======Training model completed!!==========")
+        return selectedModel
+
+
+#save the checkpoint in the directory mentioned
+def saveCheckpoint(trainModel, checkpointName, arch):
+    trainModel.class_to_idx = train_datasets.class_to_idx
+    checkpoint = {
+    'input_size':structure[arch],
+    'output_size':102,
+    'hidden_layer_1':4096,
+    'hidden_layer_2':1000,
+    'state_dict': model.state_dict(),
+    'optimizer_state_dict': optimizer.state_dict(),
+    'class_to_idx': model.class_to_idx
+    }
+    torch.save(checkpoint, checkpointName+'.pth')
+    print("==checkpoints created!!")
 
 #main function
 def main():
     ar = pass_args()
-    model = ourmodel(ar.arch, ar.hidden_layer)
-
+    Epochs = ar.epochs
+    LearnRate = ar.learn_rate
+    device = availableDevice()
+    Model = ourmodel(ar.arch, ar.hidden_units)
+    Model.to(device)
+    Optimizer = optim.Adam(Model.classifier.parameters(), lr=LearnRate)
+    trainedModel = trainModel(trainloaders, validloaders, Model, Epochs, Optimizer, LearnRate, device)
+    saveCheckpoint(trainedModel, "checkpoint", ar.arch)
 
 
 #call the main function
