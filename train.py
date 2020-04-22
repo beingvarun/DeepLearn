@@ -22,7 +22,8 @@ def pass_args():
     args.add_argument('--learn_rate', type=float, default=0.001, help="learning rate for the training model")
     args.add_argument('--epochs', type=int, default=5, help="epochs for training model")
     args.add_argument('--hidden_units', type=int, default=4096, help="choose the hidden layer no")
-    args.add_argument('--save_dir', help="specify the directory to save the checkpoint")
+    args.add_argument('--save_dir',  help="specify the directory to save the checkpoint")
+    args.add_argument("--gpu", help="specify gpu or cpu for running the program")
     ar = args.parse_args()
     return ar
 
@@ -64,8 +65,11 @@ validloaders = torch.utils.data.DataLoader(valid_datasets, batch_size=64, shuffl
 #===============================================================================
 #check cuda is available otherwise use cuda
 
-def availableDevice():
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+def availableDevice(gpu):
+    if(gpu == None):
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    else:
+        device = 'cpu'
     return device
 
 
@@ -147,42 +151,50 @@ def trainModel(TrainLoader, Validloader, selectedModel, epochs, optimizer, learn
                         accuracy += torch.mean(equals.type(torch.FloatTensor)).item()
                 print("========================")
                 print("Epochs:{}/{}".format(e+1, epochs))
-                print("trainloss:", running_loss/len(trainloaders))
-                print("validloss:", valid_loss/len(validloaders))
-                print("Accuracy", accuracy/len(validloaders))
+                print("Trainloss: {:.5f}", .format(running_loss/len(trainloaders)))
+                print("Validloss: {:.5f}", .format(valid_loss/len(validloaders)))
+                print("Accuracy : {:.5f}", .format(accuracy/len(validloaders)))
                 running_loss = 0
                 selectedModel.train()
         print("======Training model completed!!==========")
         return selectedModel
 
-
+#===============================================================================
 #save the checkpoint in the directory mentioned
-def saveCheckpoint(trainModel, checkpointName, arch):
+def saveCheckpoint(trainModel, arch, optimizer, dirname):
     trainModel.class_to_idx = train_datasets.class_to_idx
     checkpoint = {
+    'architecture': arch,
     'input_size':structure[arch],
     'output_size':102,
     'hidden_layer_1':4096,
     'hidden_layer_2':1000,
-    'state_dict': model.state_dict(),
+    'state_dict': trainModel.state_dict(),
     'optimizer_state_dict': optimizer.state_dict(),
     'class_to_idx': model.class_to_idx
     }
-    torch.save(checkpoint, checkpointName+'.pth')
+
+    if(dirname):
+        torch.save(checkpoint, dirname+'/checkpoint.pth')
+    else:
+        torch.save(checkpoint, 'checkpoint.pth')
     print("==checkpoints created!!")
 
-#main function
+
+#===============================================================================
+#main function for running program
+#===============================================================================
 def main():
     ar = pass_args()
     Epochs = ar.epochs
+    dirName = ar.save_dir
     LearnRate = ar.learn_rate
-    device = availableDevice()
+    device = availableDevice(ar.gpu)
     Model = ourmodel(ar.arch, ar.hidden_units)
     Model.to(device)
     Optimizer = optim.Adam(Model.classifier.parameters(), lr=LearnRate)
     trainedModel = trainModel(trainloaders, validloaders, Model, Epochs, Optimizer, LearnRate, device)
-    saveCheckpoint(trainedModel, "checkpoint", ar.arch)
+    saveCheckpoint(trainedModel, "checkpoint", ar.arch, Optimizer, dirName)
 
 
-#call the main function
 if __name__ == '__main__' : main()
